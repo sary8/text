@@ -35,8 +35,8 @@ func ExamplePrinter_numbers() {
 	// Output:
 	// en     123,456.78
 	// de     123.456,78
-	// de-CH  123’456.78
-	// fr     123 456,78
+	// de-CH  123'456.78
+	// fr     123 456,78
 	// bn     ১,২৩,৪৫৬.৭৮
 }
 

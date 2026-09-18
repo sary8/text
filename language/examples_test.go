@@ -279,12 +279,13 @@ func ExampleMatcher() {
 
 	fmt.Println("----")
 
-	// We match SimplifiedChinese, but with Low confidence.
-	fmt.Println(m.Match(language.TraditionalChinese))
+	// A Breton speaker will often understand French. We match French, but with
+	// Low confidence.
+	fmt.Println(m.Match(language.Make("br")))
 
-	// British English is closer to Australian English than Traditional Chinese
-	// to Simplified Chinese.
-	fmt.Println(m.Match(language.TraditionalChinese, language.Make("en-AU")))
+	// British English is closer to Australian English than French is to
+	// Breton.
+	fmt.Println(m.Match(language.Make("br"), language.Make("en-AU")))
 
 	fmt.Println("----")
 
@@ -324,7 +325,7 @@ func ExampleMatcher() {
 	// en 0 No
 	// en 0 No
 	// ----
-	// zh-Hans 6 Low
+	// fr 2 Low
 	// en-GB-u-rg-auzzzz 1 High
 	// ----
 	// pt-BR 4 Exact
@@ -335,7 +336,7 @@ func ExampleMatcher() {
 	// he-u-rg-ilzzzz 9 Exact
 	// ----
 	// fr-u-cu-frf 2 Exact
-	// fr-u-cu-frf 2 High
+	// fr-u-cu-frf 2 Low
 	// en-u-co-phonebk 0 No
 }
 
@@ -366,9 +367,9 @@ func ExampleComprehends() {
 	// There is usually no mutual comprehensibility between different scripts.
 	fmt.Println(language.Comprehends(language.Make("en-Dsrt"), language.English))
 
-	// One exception is for Traditional versus Simplified Chinese, albeit with
-	// a low confidence.
-	fmt.Println(language.Comprehends(language.TraditionalChinese, language.SimplifiedChinese))
+	// One exception is Serbian, which is written in both the Latin and the
+	// Cyrillic script, albeit with a low confidence.
+	fmt.Println(language.Comprehends(language.Make("sr-Latn"), language.Make("sr-Cyrl")))
 
 	fmt.Println("----")
 

@@ -209,6 +209,18 @@ func (t Tag) Parent() Tag {
 		return t
 	}
 	if t.LangID != 0 {
+		// A parent of a different language, such as no for nb, is listed
+		// explicitly.
+		for i := range parentTags {
+			p := &parentTags[i]
+			if Language(p.lang) == t.LangID && Script(p.script) == t.ScriptID && Region(p.region) == t.RegionID {
+				return Tag{
+					LangID:   Language(p.toLang),
+					ScriptID: Script(p.toScript),
+					RegionID: Region(p.toRegion),
+				}
+			}
+		}
 		if t.RegionID != 0 {
 			maxScript := t.ScriptID
 			if maxScript == 0 {

@@ -83,7 +83,8 @@ func TestValidForms(t *testing.T) {
 		want []Form
 	}{
 		{language.AmericanEnglish, []Form{Other, One}},
-		{language.Portuguese, []Form{Other, One}},
+		{language.Portuguese, []Form{Other, One, Many}},
+		{language.French, []Form{Other, One, Many}},
 		{language.Latvian, []Form{Other, Zero, One}},
 		{language.Arabic, []Form{Other, Zero, One, Two, Few, Many}},
 		{language.Russian, []Form{Other, One, Few, Many}},
@@ -229,6 +230,10 @@ func TestMatchDigits(t *testing.T) {
 		{Cardinal, "ru", "12345678", Many},
 		{Cardinal, "br", "2000000", Many},
 		{Cardinal, "br", "2500000", Other},
+		{Cardinal, "fr", "1000000", Many},
+		{Cardinal, "fr", "2000000", Many},
+		{Cardinal, "fr", "1000001", Other},
+		{Cardinal, "fr", "1000000.5", Other},
 
 		// The fraction is approximated modulo 100.
 		{Cardinal, "bs", "0.123", Few},
@@ -241,9 +246,16 @@ func TestMatchDigits(t *testing.T) {
 		{Ordinal, "it", "800", Many},
 		{Ordinal, "it", "801", Other},
 		{Ordinal, "it", "1000800", Other},
+		{Ordinal, "lij", "899", Many},
+		{Ordinal, "lij", "900", Other},
+		{Cardinal, "kw", "1000", Two},
+		{Cardinal, "kw", "1100000", Two},
+		{Cardinal, "kw", "1000000", Other},
 
 		// The operand t is the fraction without trailing zeros.
 		{Cardinal, "is", "1.10", One},
+		{Cardinal, "is", "1.11", Other},
+		{Cardinal, "is", "1.110", Other},
 		{Cardinal, "is", "1.21", One},
 	}
 	for _, tc := range testCases {

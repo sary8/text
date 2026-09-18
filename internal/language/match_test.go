@@ -33,10 +33,11 @@ func TestAddLikelySubtags(t *testing.T) {
 		{"und-Arab", "ar-Arab-EG"},
 		{"und-AM", "hy-Armn-AM"},
 		{"und-TW", "zh-Hant-TW"},
-		{"und-002", "en-Latn-NG"},
-		{"und-Latn-002", "en-Latn-NG"},
-		{"en-Latn-002", "en-Latn-NG"},
-		{"en-002", "en-Latn-NG"},
+		// CLDR 44 removed the likely subtags for macro regions such as 002.
+		{"und-002", "en-Latn-002"},
+		{"und-Latn-002", "en-Latn-002"},
+		{"en-Latn-002", "en-Latn-002"},
+		{"en-002", "en-Latn-002"},
 		{"en-001", "en-Latn-US"},
 		{"und-003", "en-Latn-US"},
 		{"und-GB", "en-Latn-GB"},
@@ -50,11 +51,11 @@ func TestAddLikelySubtags(t *testing.T) {
 		{"kk-034", "kk-Arab-034"}, // Matches IR and AF. Both are Arab.
 		{"ku-145", "ku-Latn-TR"},  // Matches IQ, TR, and LB, but kk -> TR.
 		{"und-Arab-CC", "ms-Arab-CC"},
-		{"und-Arab-GB", "ks-Arab-GB"},
+		{"und-Arab-GB", "ur-Arab-GB"},
 		{"und-Hans-CC", "zh-Hans-CC"},
-		{"und-CC", "en-Latn-CC"},
+		{"und-CC", "ms-Arab-CC"},
 		{"sr", "sr-Cyrl-RS"},
-		{"sr-151", "sr-Latn-151"}, // Matches RO and RU.
+		{"sr-151", "sr-Latn-RO"}, // Matches only RO since CLDR 47 dropped sr-RU.
 		// We would like addLikelySubtags to generate the same results if the input
 		// only changes by adding tags that would otherwise have been added
 		// by the expansion.
@@ -83,7 +84,7 @@ func TestAddLikelySubtags(t *testing.T) {
 		// regions, scripts and languages without definitions
 		{"und-Arab-AA", "ar-Arab-AA"},
 		{"und-Afak-RE", "fr-Afak-RE"},
-		{"und-Arab-GB", "ks-Arab-GB"},
+		{"und-Arab-GB", "ur-Arab-GB"},
 		{"abp-Arab-GB", "abp-Arab-GB"},
 		// script has preference over region
 		{"und-Arab-NL", "ar-Arab-NL"},
@@ -133,7 +134,7 @@ func TestMinimize(t *testing.T) {
 		{"und-YT", "und-YT"},
 		{"und-Arab", "und-Arab"},
 		{"und-AM", "und-AM"},
-		{"und-Arab-CC", "und-Arab-CC"},
+		{"und-Arab-CC", "und-CC"},
 		{"und-CC", "und-CC"},
 		{"und-Latn-BJ", "und-BJ"},
 		{"und-Bugi-ID", "und-Bugi"},

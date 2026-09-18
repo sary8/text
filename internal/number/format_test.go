@@ -474,8 +474,11 @@ func TestLocales(t *testing.T) {
 	}{
 		{language.Make("en"), "123456.78", "123,456.78"},
 		{language.Make("de"), "123456.78", "123.456,78"},
-		{language.Make("de-CH"), "123456.78", "123’456.78"},
-		{language.Make("fr"), "123456.78", "123 456,78"},
+		{language.Make("de-CH"), "123456.78", "123'456.78"},
+		{language.Make("fr"), "123456.78", "123 456,78"},
+		{language.Make("no"), "123456.78", "123 456,78"},
+		{language.Make("nb"), "123456.78", "123 456,78"}, // inherits from no
+		{language.Make("nn"), "123456.78", "123 456,78"}, // inherits from no
 		{language.Make("bn"), "123456.78", "১,২৩,৪৫৬.৭৮"},
 	}
 	for _, tc := range testCases {

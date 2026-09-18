@@ -339,7 +339,9 @@ func (t Tag) Variants() []Variant {
 // Parent returns a tag for a less specific language that is mutually
 // intelligible or Und if there is no such language. This may not be the same as
 // simply stripping the last BCP 47 subtag. For instance, the parent of "zh-TW"
-// is "zh-Hant", and the parent of "zh-Hant" is "und".
+// is "zh-Hant", and the parent of "zh-Hant" is "und". The parent may also be
+// a tag of a different language from which CLDR takes the data, such as "no"
+// for "nb" or "fr-HT" for "ht".
 func (t Tag) Parent() Tag {
 	return Tag(compact.Tag(t).Parent())
 }

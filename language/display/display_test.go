@@ -27,6 +27,23 @@ var (
 	lastTagZhHant = language.MustParse("zh-Hant")
 )
 
+// noEnglishName holds the tags for which there is no data in English as of
+// CLDR 48, although there is useful data in other languages. The tests
+// report entries that have gained a name in English, so that the list can be
+// pruned when the tables are regenerated.
+var noEnglishName = map[string]bool{
+	"apc":      true,
+	"az-Arab":  true,
+	"bal-Latn": true,
+	"kk-Arab":  true,
+	"laz":      true,
+	"lld":      true,
+	"mhn":      true,
+	"mww":      true,
+	"skr":      true,
+	"suz":      true,
+}
+
 // TestValues tests that for all languages, regions, and scripts in Values, at
 // least one language has a name defined for it by checking it exists in
 // English, which is assumed to be the most comprehensive. It is also tested
@@ -41,12 +58,12 @@ func TestValues(t *testing.T) {
 		for _, n := range namers {
 			t.Run(fmt.Sprintf("%s.Name(%s)", n.kind, x), func(t *testing.T) {
 				if n.n.Name(x) == "" {
-					// As of version 28 there is no data for az-Arab in English,
-					// although there is useful data in other languages.
-					if x.(fmt.Stringer).String() == "az-Arab" {
+					if noEnglishName[x.(fmt.Stringer).String()] {
 						return
 					}
 					t.Errorf("supported but no result")
+				} else if noEnglishName[x.(fmt.Stringer).String()] {
+					t.Errorf("has a name in English; remove it from noEnglishName")
 				}
 			})
 		}
@@ -184,6 +201,12 @@ func defined(t *testing.T, kind string, n Namer, tag language.Tag) bool {
 				return true
 			}
 		}
+		// A locale may only have names for tags that are not a base language.
+		for _, t := range Values.Tags() {
+			if n.Name(t) != "" {
+				return true
+			}
+		}
 	case "Regions":
 		for _, t := range Values.Regions() {
 			if n.Name(t) != "" {
@@ -217,12 +240,13 @@ func TestCoverage(t *testing.T) {
 		v := reflect.ValueOf(tt.x)
 		for j := 0; j < v.Len(); j++ {
 			x := v.Index(j).Interface()
-			// As of version 28 there is no data for az-Arab in English,
-			// although there is useful data in other languages.
-			if x.(fmt.Stringer).String() == "az-Arab" {
+			s := tt.n.Name(x)
+			if noEnglishName[x.(fmt.Stringer).String()] {
+				if s != "" {
+					t.Errorf("%d:%d:%s: has a name in English; remove it from noEnglishName", i, j, x)
+				}
 				continue
 			}
-			s := tt.n.Name(x)
 			if s == "" {
 				t.Errorf("%d:%d:%s: missing content", i, j, x)
 			} else if uniq[s] != nil {
@@ -333,7 +357,7 @@ func TestTag(t *testing.T) {
 		// CLDR 30 dropped Vlaams as the word for nl-BE. It is still called
 		// Flemish in English, though. TODO: check if this is a CLDR bug.
 		// {"nl", "nl-BE", "Vlaams"},
-		{"nl", "nl-BE", "Nederlands (België)"},
+		{"nl", "nl-BE", "Vlaams"},
 		{"nl", "vls", "West-Vlaams"},
 		{"en", "nl-BE", "Flemish"},
 		{"en", "en", "English"},
@@ -345,7 +369,7 @@ func TestTag(t *testing.T) {
 		{"en", lastLang2zu.String(), "Zulu"},
 		{"en", firstLang2aa.String(), "Afar"},
 		{"en", lastLang3zza.String(), "Zaza"},
-		{"en", firstLang3ace.String(), "Achinese"},
+		{"en", firstLang3ace.String(), "Acehnese"},
 		{"en", firstTagAr001.String(), "Modern Standard Arabic"},
 		{"en", lastTagZhHant.String(), "Traditional Chinese"},
 		{"en", "aaa", "|Unknown language (aaa)"},
@@ -366,7 +390,9 @@ func TestTag(t *testing.T) {
 		// correct and consistent with the way zh-[Hant-]TW is handled. It will
 		// also give results more in line with the expectations if users
 		// explicitly use "sh".
-		{"sr-Latn", "sr-ME", "srpski (Crna Gora)"},
+		// As of CLDR 48, sr-ME has a name of its own in some languages. In
+		// languages without such a name, it is handled like sr-Latn-ME.
+		{"sr-Latn", "sr-ME", "srpskohrvatski (Crna Gora)"},
 		{"sr-Latn", "sr-Latn-ME", "srpskohrvatski (Crna Gora)"},
 		// Double script and region
 		{"nl", "en-Cyrl-BE", "Engels (Cyrillisch, België)"},
@@ -411,14 +437,10 @@ func TestLanguage(t *testing.T) {
 	}{
 		// sr is in Value.Languages(), but is not supported by agq.
 		{"agq", "sr", "|[language: sr]"},
-		// CLDR 30 dropped Vlaams as the word for nl-BE. It is still called
-		// Flemish in English, though. TODO: this is probably incorrect.
-		// West-Vlaams (vls) is not Vlaams. West-Vlaams could be considered its
-		// own language, whereas Vlaams is generally Dutch. So expect to have
-		// to change these tests back.
+		// CLDR 30 dropped Vlaams as the word for nl-BE, but CLDR 48 added it back.
 		{"nl", "nl", "Nederlands"},
 		{"nl", "vls", "West-Vlaams"},
-		{"nl", "nl-BE", "Nederlands"},
+		{"nl", "nl-BE", "Vlaams"},
 		{"en", "pt", "Portuguese"},
 		{"en", "pt-PT", "European Portuguese"},
 		{"en", "pt-BR", "Brazilian Portuguese"},
@@ -428,7 +450,7 @@ func TestLanguage(t *testing.T) {
 		{"en", lastLang2zu.String(), "Zulu"},
 		{"en", firstLang2aa.String(), "Afar"},
 		{"en", lastLang3zza.String(), "Zaza"},
-		{"en", firstLang3ace.String(), "Achinese"},
+		{"en", firstLang3ace.String(), "Acehnese"},
 		{"en", firstTagAr001.String(), "Modern Standard Arabic"},
 		{"en", lastTagZhHant.String(), "Traditional Chinese"},
 		{"en", "aaa", "|Unknown language (aaa)"},
@@ -444,7 +466,7 @@ func TestLanguage(t *testing.T) {
 		{"en", "sh", "Serbo-Croatian"},
 		{"en", "sr-Latn", "Serbo-Croatian"},
 		{"en", "sr", "Serbian"},
-		{"en", "sr-ME", "Serbian"},
+		{"en", "sr-ME", "Montenegrin"},
 		{"en", "sr-Latn-ME", "Serbo-Croatian"}, // See comments in TestTag.
 	}
 	for _, tt := range tests {
@@ -482,12 +504,12 @@ func TestScript(t *testing.T) {
 		{"nl", "Arab", "Arabisch"},
 		{"en", "Arab", "Arabic"},
 		{"en", "Zzzz", "Unknown Script"},
-		{"zh-Hant", "Hang", "韓文字"},
-		{"zh-Hant-HK", "Hang", "韓文字"},
+		{"zh-Hant", "Hang", "諺文"},
+		{"zh-Hant-HK", "Hang", "諺文"},
 		{"zh", "Arab", "阿拉伯文"},
 		{"zh-Hans-HK", "Arab", "阿拉伯文"}, // same as zh
-		{"zh-Hant", "Arab", "阿拉伯文"},
-		{"zh-Hant-HK", "Arab", "阿拉伯文"}, // same as zh
+		{"zh-Hant", "Arab", "阿拉伯字母"},
+		{"zh-Hant-HK", "Arab", "阿拉伯字母"}, // same as zh-Hant
 		// Canonicalized form
 		{"en", "Qaai", "Inherited"},    // deprecated script, now is Zinh
 		{"en", "sh", "Unknown Script"}, // sh canonicalizes to sr-Latn
@@ -580,13 +602,13 @@ func TestSelf(t *testing.T) {
 		// CLDR 30 dropped Vlaams as the word for nl-BE. It is still called
 		// Flemish in English, though. TODO: check if this is a CLDR bug.
 		// {"nl-BE", "Vlaams"},
-		{"nl-BE", "Nederlands"},
+		{"nl-BE", "Vlaams"},
 		{"en-GB", "British English"},
 		{lastLang2zu.String(), "isiZulu"},
 		{firstLang2aa.String(), ""},  // not defined
 		{lastLang3zza.String(), ""},  // not defined
 		{firstLang3ace.String(), ""}, // not defined
-		{firstTagAr001.String(), "العربية الرسمية الحديثة"},
+		{firstTagAr001.String(), "العربية الفصحى الحديثة"},
 		{"ar", "العربية"},
 		{lastTagZhHant.String(), "繁體中文"},
 		{"aaa", ""},
@@ -619,10 +641,9 @@ func TestSelf(t *testing.T) {
 		{"sr-Latn-ME", "srpskohrvatski"},
 		{"sr-Cyrl-ME", "српски"},
 		{"sr-NL", "српски"},
-		// NOTE: kk is defined, but in Cyrillic script. For China, Arab is the
-		// dominant script. We do not have data for kk-Arab and we chose to not
-		// fall back in such cases.
-		{"kk-CN", ""},
+		// kk is written in the Cyrillic script, but in China it is written in the
+		// Arabic script, for which there is data as of CLDR 48.
+		{"kk-CN", "قازاق ءتىلى (توتە)"},
 	}
 	for i, tt := range tests {
 		d := Self

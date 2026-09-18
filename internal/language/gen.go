@@ -332,8 +332,46 @@ func newBuilder(w *gen.CodeWriter) *builder {
 		data: data,
 		supp: data.Supplemental(),
 	}
+	b.filterLikelySubtags()
 	b.parseRegistry()
 	return &b
+}
+
+// filterLikelySubtags drops the likely subtag entries that were derived from
+// external sources for languages that have neither a locale file nor plural
+// rules in CLDR. The entries are removed from the parsed data, so that all
+// later passes see the filtered set. Note that the set of languages with
+// data depends on the data being decoded without a directory filter.
+//
+// Leaving these entries out is a choice of this package, not of CLDR: the
+// likely subtags of these languages are of little use without other data,
+// and including them would multiply the size of the language index.
+//
+// Since CLDR 43, likelySubtags.xml also contains entries that are derived from
+// external sources, marked with an origin attribute (currently origin="sil1").
+// These cover thousands of languages for which CLDR has no other data and
+// would multiply the size of the language index and the likely subtag tables.
+func (b *builder) filterLikelySubtags() {
+	hasData := map[string]bool{}
+	for _, loc := range b.data.Locales() {
+		hasData[strings.Split(loc, "_")[0]] = true
+	}
+	for _, plurals := range b.supp.Plurals {
+		for _, rules := range plurals.PluralRules {
+			for _, loc := range strings.Split(rules.Locales, " ") {
+				hasData[strings.Split(loc, "_")[0]] = true
+			}
+		}
+	}
+	ls := b.supp.LikelySubtags.LikelySubtag
+	n := 0
+	for _, l := range ls {
+		if l.Origin == "" || hasData[strings.Split(l.From, "_")[0]] {
+			ls[n] = l
+			n++
+		}
+	}
+	b.supp.LikelySubtags.LikelySubtag = ls[:n]
 }
 
 func (b *builder) parseRegistry() {
@@ -1457,39 +1495,105 @@ type parentRel struct {
 	fromRegion []uint16
 }
 
+// parentTag records a parent that has a different language than its child.
+type parentTag struct {
+	lang, script, region       uint16
+	toLang, toScript, toRegion uint16
+}
+
 func (b *builder) writeParents() {
 	b.writeType(parentRel{})
+	b.writeType(parentTag{})
+
+	// core returns the indexes of the language, script and region of a locale
+	// identifier.
+	core := func(loc string) (lang, script, region uint16) {
+		sub := strings.Split(loc, "_")
+		lang = b.langIndex(sub[0])
+		for _, s := range sub[1:] {
+			switch {
+			case len(s) == 4:
+				script = uint16(b.script.index(s))
+			case len(s) == 2 || len(s) == 3 && '0' <= s[0] && s[0] <= '9':
+				region = uint16(b.region.index(s))
+			default:
+				log.Fatalf("parentLocales: unexpected subtag %q in %q", s, loc)
+			}
+		}
+		return lang, script, region
+	}
 
 	parents := []parentRel{}
+	parentTags := []parentTag{}
 
 	// Construct parent overrides.
 	n := 0
-	for _, p := range b.data.Supplemental().ParentLocales.ParentLocale {
-		// Skipping non-standard scripts to root is implemented using addTags.
-		if p.Parent == "root" {
+	for _, pl := range b.data.Supplemental().ParentLocales {
+		// Since CLDR 43, parentLocales is split into a default set and sets
+		// that apply to a single component (collations, plurals, ...). Only
+		// the default inheritance is used here.
+		if pl.Component != "" {
 			continue
 		}
+		for _, p := range pl.ParentLocale {
+			// Skipping non-standard scripts to root is implemented using addTags.
+			if p.Parent == "root" {
+				continue
+			}
 
-		sub := strings.Split(p.Parent, "_")
-		parent := parentRel{lang: b.langIndex(sub[0])}
-		if len(sub) == 2 {
-			// TODO: check that all undefined scripts are indeed Latn in these
-			// cases.
-			parent.maxScript = uint16(b.script.index("Latn"))
-			parent.toRegion = uint16(b.region.index(sub[1]))
-		} else {
-			parent.script = uint16(b.script.index(sub[1]))
-			parent.maxScript = parent.script
-			parent.toRegion = uint16(b.region.index(sub[2]))
+			sub := strings.Split(p.Parent, "_")
+			parent := parentRel{lang: b.langIndex(sub[0])}
+			if len(sub) == 3 {
+				parent.script = uint16(b.script.index(sub[1]))
+				parent.maxScript = parent.script
+				parent.toRegion = uint16(b.region.index(sub[2]))
+			} else {
+				// TODO: check that all undefined scripts are indeed Latn in these
+				// cases.
+				parent.maxScript = uint16(b.script.index("Latn"))
+				if len(sub) == 2 {
+					parent.toRegion = uint16(b.region.index(sub[1]))
+				}
+			}
+			for _, c := range strings.Split(p.Locales, " ") {
+				if strings.Split(c, "_")[0] != sub[0] {
+					// A parent of a different language, such as no for nb
+					// and nn, fr_HT for ht or en_IN for hi_Latn, is listed by
+					// tag. CLDR 48 has these; earlier versions have none.
+					pt := parentTag{}
+					pt.lang, pt.script, pt.region = core(c)
+					pt.toLang, pt.toScript, pt.toRegion = core(p.Parent)
+					parentTags = append(parentTags, pt)
+					continue
+				}
+				// A bare language is what Parent returns for lang_REGION by
+				// default, so an entry such as no for no_NO adds nothing.
+				if len(sub) == 1 && strings.Count(c, "_") == 1 {
+					continue
+				}
+				region := b.region.index(c[strings.LastIndex(c, "_")+1:])
+				parent.fromRegion = append(parent.fromRegion, uint16(region))
+			}
+			if len(parent.fromRegion) == 0 {
+				continue
+			}
+			parents = append(parents, parent)
+			n += len(parent.fromRegion)
 		}
-		for _, c := range strings.Split(p.Locales, " ") {
-			region := b.region.index(c[strings.LastIndex(c, "_")+1:])
-			parent.fromRegion = append(parent.fromRegion, uint16(region))
-		}
-		parents = append(parents, parent)
-		n += len(parent.fromRegion)
 	}
 	b.writeSliceAddSize("parents", n*2, parents)
+	// The order of the entries in the data may differ between releases.
+	sort.Slice(parentTags, func(i, j int) bool {
+		a, b := parentTags[i], parentTags[j]
+		if a.lang != b.lang {
+			return a.lang < b.lang
+		}
+		if a.script != b.script {
+			return a.script < b.script
+		}
+		return a.region < b.region
+	})
+	b.writeSlice("parentTags", parentTags)
 }
 
 func main() {

@@ -587,7 +587,6 @@ func TestParent(t *testing.T) {
 		// World english inherits from en-001.
 		{"en-150", "en-001"},
 		{"en-AU", "en-001"},
-		{"en-BE", "en-001"},
 		{"en-GG", "en-001"},
 		{"en-GI", "en-001"},
 		{"en-HK", "en-001"},
@@ -599,6 +598,26 @@ func TestParent(t *testing.T) {
 		{"en-NZ", "en-001"},
 		{"en-PK", "en-001"},
 		{"en-SG", "en-001"},
+
+		// English in continental Europe inherits from en-150.
+		{"en-BE", "en-150"},
+		{"en-DE", "en-150"},
+
+		// Canada and the Philippines are grouped with American English since
+		// CLDR 48, so their parent is en.
+		{"en-CA", "en"},
+		{"en-PH", "en"},
+
+		// Since CLDR 48, Norwegian Bokmål and Nynorsk inherit from Norwegian,
+		// which holds their data, Haitian from French in Haiti and Hinglish
+		// from English in India.
+		{"nb", "no"},
+		{"nn", "no"},
+		{"nb-NO", "nb"},
+		{"no-NO", "no"},
+		{"ht", "fr-HT"},
+		{"hi-Latn", "en-IN"},
+		{"hi-Latn-IN", "hi-Latn"},
 
 		// Spanish in Latin-American countries have es-419 as parent.
 		{"es-AR", "es-419"},

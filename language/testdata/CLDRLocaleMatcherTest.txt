@@ -150,7 +150,7 @@ zh, zh-TW, zh-HK ; 	zh-MO ; 	zh-HK
 
 zh, zh-Hant ; 	und-TW ; 	zh-Hant	# und-TW should be closer to zh-Hant than to zh
 en-Hant-TW, und-TW ; 	zh-Hant ; 	und-TW	# zh-Hant should be closer to und-TW than to en-Hant-TW
-en-Hant-TW, und-TW ; 	zh ; 	und-TW	# zh should be closer to und-TW than to en-Hant-TW
+en-Hant-TW, und-TW ; 	zh ; 	en-Hant-TW	# Since CLDR 39, zh (zh-Hans) does not match und-TW (zh-Hant), so the default is returned.
 
 ##################################################
 # testMatchGrandfatheredCode
@@ -199,8 +199,8 @@ en, de, fr, ja ; 	de-CH, fr ; 	de
 # The script distance (simplified vs. traditional Han) is considered small enough
 # to be an acceptable match. The regional difference is considered almost insignificant.
 
-fr, zh-Hans-CN, en-US ; 	zh-TW ; 	zh-Hans-CN
-fr, zh-Hans-CN, en-US ; 	zh-Hant ; 	zh-Hans-CN
+fr, zh-Hans-CN, en-US ; 	zh-TW ; 	fr	# Since CLDR 39, zh-Hant does not match zh-Hans.
+fr, zh-Hans-CN, en-US ; 	zh-Hant ; 	fr	# Since CLDR 39, zh-Hant does not match zh-Hans.
 
 # For geo-political reasons, you might want to avoid a zh-Hant -> zh-Hans match.
 # In this case, if zh-TW, zh-HK or a tag starting with zh-Hant is requested, you can
@@ -238,7 +238,7 @@ it, und ; 	en ; 	it
 # testGetBestMatch-regionDistance
 
 es-AR, es ; 	es-MX ; 	es-AR
-fr, en, en-GB ; 	en-CA ; 	en-GB
+fr, en, en-GB ; 	en-CA ; 	en	# CA is in $enUS.
 de-AT, de-DE, de-CH ; 	de ; 	de-DE
 
 ##################################################
