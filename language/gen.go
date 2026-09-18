@@ -177,7 +177,9 @@ func (b *builder) writeMatchData() {
 	for i := 0; i < len(locales); i += 2 {
 		x := [3]uint16{}
 		for j := 0; j < 2; j++ {
-			pc := strings.SplitN(locales[i+j], "-", 2)
+			// Different versions of CLDR use different separators.
+			locale := strings.ReplaceAll(locales[i+j], "-", "_")
+			pc := strings.SplitN(locale, "_", 2)
 			x[0] = b.langIndex(pc[0])
 			if len(pc) == 2 {
 				x[1+j] = uint16(b.regionIndex(pc[1]))
@@ -234,8 +236,10 @@ func (b *builder) writeMatchData() {
 			}
 			if distance == 1 {
 				// nb == no is already handled by macro mapping. Check there
-				// really is only this case.
-				if d[0] != "no" || s[0] != "nb" {
+				// really is only this case. CLDR 32 lists it as no == nb and
+				// CLDR 48 as nb == no.
+				isNbNo := s[0] == "nb" && d[0] == "no" || s[0] == "no" && d[0] == "nb"
+				if !isNbNo {
 					log.Fatalf("unhandled equivalence %s == %s", s[0], d[0])
 				}
 				continue
