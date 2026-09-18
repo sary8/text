@@ -285,12 +285,19 @@ func genPlurals(w *gen.CodeWriter, data *cldr.CLDR) {
 		}
 		w.WriteVar(plurals.Type+"Rules", rules)
 		w.WriteVar(plurals.Type+"Index", index)
-		// Expand the values: first by using the parent relationship.
+		// Expand the values: first by using the parent relationship, but only
+		// within the same language. CLDR defines plural rules per language and
+		// does not apply parents of a different language, such as en_IN for
+		// hi_Latn, to them.
 		langToIndex := make([]byte, compact.NumCompactTags)
 		for i := range langToIndex {
-			for p := compact.ID(i); ; p = p.Parent() {
+			lang := compact.ID(i).Tag().LangID
+			for p := compact.ID(i); p.Tag().LangID == lang; p = p.Parent() {
 				if x, ok := langMap[p]; ok {
 					langToIndex[i] = x
+					break
+				}
+				if p == 0 {
 					break
 				}
 			}
