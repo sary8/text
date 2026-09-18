@@ -218,16 +218,21 @@ func (b *builder) generate() {
 			}
 		}
 	})
+	// Private use scripts (Qaaa..Qabx) have no meaning in general, but some
+	// are established enough to have a name in English, like Qaag (Zawgyi).
+	// Include those only.
+	enScripts := map[language.Script]bool{}
+	if en := b.data.RawLDML("en"); en != nil && en.LocaleDisplayNames != nil && en.LocaleDisplayNames.Scripts != nil {
+		ldn := en.LocaleDisplayNames
+		for _, v := range ldn.Scripts.Script {
+			enScripts[language.MustParseScript(v.Type)] = true
+		}
+	}
 	b.setData("script", func(g *group, loc language.Tag, ldn *cldr.LocaleDisplayNames) {
 		if ldn.Scripts != nil {
 			for _, v := range ldn.Scripts.Script {
 				code := language.MustParseScript(v.Type)
-				if code.IsPrivateUse() { // Qaaa..Qabx
-					// TODO: data currently appears to be very meager.
-					// Reconsider if we have data for English.
-					if loc == language.English {
-						log.Fatal("Consider including data for private use scripts.")
-					}
+				if code.IsPrivateUse() && !enScripts[code] {
 					continue
 				}
 				g.set(loc, code.String(), v.Data())
@@ -557,7 +562,13 @@ func (b *builder) writeDictionaries() {
 		if dict.contains(t) {
 			ident := identifier(t)
 			fmt.Fprintf(b.w, "\t%s = Dictionary{ // %s\n", ident, t)
-			if p := parents[i]; p == -1 {
+			// The parent of a Dictionary must be a Dictionary as well. Skip
+			// parents for which no Dictionary is generated.
+			p := parents[i]
+			for p != -1 && !dict.contains(b.supported[p]) {
+				p = parents[p]
+			}
+			if p == -1 {
 				fmt.Fprintln(b.w, "\t\tnil,")
 			} else {
 				fmt.Fprintf(b.w, "\t\t&%s,\n", identifier(b.supported[p]))
