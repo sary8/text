@@ -229,7 +229,7 @@ func matchPlural(p *Rules, index compact.ID, n, f, v int) Form {
 			skip = p.inclusionMasks[f%maxMod]&setBit != 0
 
 		case opV: // v = x
-			skip = v < numN && vMask&setBit == 0
+			skip = v >= numN || vMask&setBit == 0
 
 		case opV | opNotEqual: // v != x
 			skip = v < numN && vMask&setBit != 0

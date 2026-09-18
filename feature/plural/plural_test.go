@@ -96,6 +96,20 @@ func TestValidForms(t *testing.T) {
 	}
 }
 
+// TestMatchPluralV checks that a relation v = x does not match a number with
+// 100 or more visible fraction digits, which the sets cannot represent.
+func TestMatchPluralV(t *testing.T) {
+	en := language.English
+	if got := Cardinal.MatchPlural(en, 1, 0, 0, 0, 0); got != One {
+		t.Errorf("MatchPlural(en, 1): got %v; want %v", got, One)
+	}
+	for _, v := range []int{99, 100, 101} {
+		if got := Cardinal.MatchPlural(en, 1, v, 0, 0, 0); got != Other {
+			t.Errorf("MatchPlural(en, 1 with %d fraction digits): got %v; want %v", v, got, Other)
+		}
+	}
+}
+
 func TestOrdinal(t *testing.T) {
 	testPlurals(t, Ordinal, ordinalTests)
 }
