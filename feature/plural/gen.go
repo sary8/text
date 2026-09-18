@@ -15,7 +15,7 @@ package main
 // 		and_condition = relation ('and' relation)*
 // 		relation      = expr ('=' | '!=') range_list
 // 		expr          = operand ('%' '10' '0'* )?
-// 		operand       = 'n' | 'i' | 'f' | 't' | 'v' | 'w'
+// 		operand       = 'n' | 'i' | 'f' | 't' | 'v' | 'w' | 'e' | 'c'
 // 		range_list    = (range | value) (',' range_list)*
 // 		range         = value'..'value
 // 		value         = digit+
@@ -25,7 +25,7 @@ package main
 // 		                ('@decimal' sampleList)?
 // 		sampleList    = sampleRange (',' sampleRange)* (',' ('…'|'...'))?
 // 		sampleRange   = decimalValue ('~' decimalValue)?
-// 		decimalValue  = value ('.' value)?
+// 		decimalValue  = value ('.' value)? (('c'|'e') digit+)?
 //
 //		Symbol	Value
 //		n	absolute value of the source number (integer and decimals).
@@ -34,6 +34,7 @@ package main
 //		w	number of visible fraction digits in n, without trailing zeros.
 //		f	visible fractional digits in n, with trailing zeros.
 //		t	visible fractional digits in n, without trailing zeros.
+//		e	compact decimal exponent value (c is a synonym).
 //
 // The algorithm for which the data is generated is based on the following
 // observations
@@ -47,12 +48,16 @@ package main
 // The function matchPlural in plural.go defines how we can subsequently use
 // this data to determine inclusion.
 //
-// There are a few languages for which this doesn't work. For one Italian and
-// Azerbaijan, which both test against numbers > 100 for ordinals and Breton,
-// which considers whether numbers are multiples of hundreds. The model here
-// could be extended to handle Italian and Azerbaijan fairly easily (by
-// considering the numbers 100, 200, 300, ..., 800, 900 in addition to the first
-// 100), but for now it seems easier to just hard-code these cases.
+// There are a few rules for which this doesn't work: rules that compare
+// against numbers of 100 or more, such as the ordinal rules for Italian and
+// Azerbaijani, and rules with a modulus larger than 100, such as the rules
+// for Breton and Cornish and the rules for the form "many" of several Romance
+// languages. The model here could be extended to handle some of these fairly
+// easily (by considering the numbers 100, 200, 300, ..., 800, 900 in addition
+// to the first 100), but for now it seems easier to just hard-code these cases.
+//
+// This package does not support compact decimal formatting, so the operand e
+// is always 0. Relations on e are resolved at generation time.
 
 import (
 	"bufio"
@@ -60,6 +65,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -97,6 +104,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("DecodeZip: %v", err)
 	}
+
+	// Write the tables of the plural types in a fixed order. The order in
+	// which the types appear in the data is that of the files in the CLDR
+	// archive, which differs between releases.
+	plurals := data.Supplemental().Plurals
+	sort.SliceStable(plurals, func(i, j int) bool { return plurals[i].Type < plurals[j].Type })
 
 	w := gen.NewCodeWriter()
 	defer w.WriteGoFile(*outputFile, pkg)
@@ -145,7 +158,11 @@ func genPluralsTests(w *gen.CodeWriter, data *cldr.CLDR) {
 						p = &test.decimal
 					case ",", "…":
 					default:
-						if p != nil {
+						// Samples such as 1c6 and 1.1c6 are numbers in compact
+						// decimal notation, for which the form may depend on
+						// the exponent. This package does not support compact
+						// decimal formatting, so these samples are skipped.
+						if p != nil && !strings.ContainsAny(t, "ce") {
 							*p = append(*p, t)
 						}
 					}
@@ -211,7 +228,7 @@ func genPlurals(w *gen.CodeWriter, data *cldr.CLDR) {
 			for _, c := range conds {
 				// If an or condition only has filters, we create an entry for
 				// this filter and the set that contains all values.
-				empty := true
+				empty := len(c.specials) == 0
 				for _, b := range c.used {
 					empty = empty && !b
 				}
@@ -242,6 +259,12 @@ func genPlurals(w *gen.CodeWriter, data *cldr.CLDR) {
 						setID: byte(index),
 					})
 				}
+				for _, s := range c.specials {
+					rules = append(rules, pluralCheck{
+						cat:   byte(opSpecial<<opShift | andNext),
+						setID: byte(s),
+					})
+				}
 				// Now set the last entry to the plural form the rule matches.
 				rules[len(rules)-1].cat &^= formMask
 				rules[len(rules)-1].cat |= byte(c.form)
@@ -253,7 +276,8 @@ func genPlurals(w *gen.CodeWriter, data *cldr.CLDR) {
 				}
 				lang, ok := compact.FromTag(language.MustParse(loc))
 				if !ok {
-					log.Printf("No compact index for locale %q", loc)
+					// FromTag returns the index of an ancestor if the tag has none.
+					log.Fatalf("No compact index for locale %q", loc)
 				}
 				langMap[lang] = byte(len(index) - 1)
 			}
@@ -306,20 +330,39 @@ func genPlurals(w *gen.CodeWriter, data *cldr.CLDR) {
 	}
 }
 
+// orCondition holds the constraints of a single and_condition of a plural
+// rule, which is one of the alternatives of the condition of the rule.
 type orCondition struct {
 	original string // for debugging
 
 	form Form
 	used [32]bool
 	set  [32][numN]bool
+
+	// specials holds the hard-wired rules that must match in addition to
+	// the sets.
+	specials []specialRule
 }
 
-func (o *orCondition) add(op opID, mod int, v []int) (ok bool) {
-	ok = true
+func newOrCondition(original string, f Form) orCondition {
+	cond := orCondition{original: original, form: f}
+	// Set all numbers to be allowed for all number classes and restrict
+	// from here on.
+	for i := range cond.set {
+		for j := range cond.set[i] {
+			cond.set[i][j] = true
+		}
+	}
+	return cond
+}
+
+// add restricts the set for op to the numbers whose value modulo mod (or the
+// number itself if mod is 0) is in v. All values in v must be less than
+// maxMod.
+func (o *orCondition) add(op opID, mod int, v []int) {
 	for _, x := range v {
 		if x >= maxMod {
-			ok = false
-			break
+			log.Fatalf("Value %d not supported: %s", x, o.original)
 		}
 	}
 	for i := 0; i < numN; i++ {
@@ -327,23 +370,19 @@ func (o *orCondition) add(op opID, mod int, v []int) (ok bool) {
 		if mod != 0 {
 			m = i % mod
 		}
-		if !intIn(m, v) {
+		if !slices.Contains(v, m) {
 			o.set[op][i] = false
 		}
 	}
-	if ok {
-		o.used[op] = true
-	}
-	return ok
+	o.used[op] = true
 }
 
-func intIn(x int, a []int) bool {
-	for _, y := range a {
-		if x == y {
-			return true
-		}
+func intRange(from, to int) []int {
+	var a []int
+	for ; from <= to; from++ {
+		a = append(a, from)
 	}
-	return false
+	return a
 }
 
 var operandIndex = map[string]opID{
@@ -351,7 +390,16 @@ var operandIndex = map[string]opID{
 	"n": opN,
 	"f": opF,
 	"v": opV,
-	"w": opW,
+	"t": opT,
+}
+
+// relation is a parsed relation of a plural rule: an operand, optionally
+// taken modulo mod, compared against a list of values.
+type relation struct {
+	operand  string // n, i, f, t, v, w, e or c
+	mod      int    // 0 if no modulus is applied
+	notEqual bool
+	values   []int
 }
 
 // parsePluralCondition parses the condition of a single pluralRule and appends
@@ -375,109 +423,165 @@ func parsePluralCondition(conds []orCondition, s string, f Form) []orCondition {
 	scan := bufio.NewScanner(strings.NewReader(s))
 	scan.Split(splitTokens)
 	for {
-		cond := orCondition{original: s, form: f}
-		// Set all numbers to be allowed for all number classes and restrict
-		// from here on.
-		for i := range cond.set {
-			for j := range cond.set[i] {
-				cond.set[i][j] = true
-			}
-		}
+		// The or conditions for the current and_condition. There is usually
+		// only one, but a relation may need to be split into two alternatives
+		// and a relation on e may make the and_condition impossible.
+		active := []orCondition{newOrCondition(s, f)}
 	andLoop:
 		for {
-			var token string
 			scan.Scan() // Must exist.
-			switch class := scan.Text(); class {
-			case "t":
-				class = "w" // equal to w for t == 0
-				fallthrough
-			case "n", "i", "f", "v", "w":
-				op := scanToken(scan)
-				opCode := operandIndex[class]
-				mod := 0
-				if op == "%" {
-					opCode |= opMod
-
-					switch v := scanUint(scan); v {
-					case 10, 100:
-						mod = v
-					case 1000:
-						// A more general solution would be to allow checking
-						// against multiples of 100 and include entries for the
-						// numbers 100..900 in the inclusion masks. At the
-						// moment this would only help Azerbaijan and Italian.
-
-						// Italian doesn't use '%', so this must be Azerbaijan.
-						cond.used[opAzerbaijan00s] = true
-						return append(conds, cond)
-
-					case 1000000:
-						cond.used[opBretonM] = true
-						return append(conds, cond)
-
-					default:
-						log.Fatalf("Modulo value not supported %d", v)
+			switch operand := scan.Text(); operand {
+			case "n", "i", "f", "t", "v", "w", "e", "c":
+				rel, token := parseRelation(scan, operand)
+				active = addRelation(active, rel, s)
+				switch token {
+				case "or":
+					conds = append(conds, active...)
+					break andLoop
+				case "@integer", "@decimal": // examples
+					// There is always an example in practice, so we always
+					// terminate here.
+					if err := scan.Err(); err != nil {
+						log.Fatal(err)
 					}
-					op = scanToken(scan)
+					return append(conds, active...)
+				case "and":
+					// keep accumulating
+				default:
+					log.Fatalf("Unexpected token %q", token)
 				}
-				if op != "=" && op != "!=" {
-					log.Fatalf("Unexpected op %q", op)
-				}
-				if op == "!=" {
-					opCode |= opNotEqual
-				}
-				a := []int{}
-				v := scanUint(scan)
-				if class == "w" && v != 0 {
-					log.Fatalf("Must compare against zero for operand type %q", class)
-				}
-				token = scanToken(scan)
-				for {
-					switch token {
-					case "..":
-						end := scanUint(scan)
-						for ; v <= end; v++ {
-							a = append(a, v)
-						}
-						token = scanToken(scan)
-					default: // ",", "or", "and", "@..."
-						a = append(a, v)
-					}
-					if token != "," {
-						break
-					}
-					v = scanUint(scan)
-					token = scanToken(scan)
-				}
-				if !cond.add(opCode, mod, a) {
-					// Detected large numbers. As we ruled out Azerbaijan, this
-					// must be the many rule for Italian ordinals.
-					cond.set[opItalian800] = cond.set[opN]
-					cond.used[opItalian800] = true
-				}
-
 			case "@integer", "@decimal": // "other" entry: tests only.
 				return conds
 			default:
-				log.Fatalf("Unexpected operand class %q (%s)", class, s)
-			}
-			switch token {
-			case "or":
-				conds = append(conds, cond)
-				break andLoop
-			case "@integer", "@decimal": // examples
-				// There is always an example in practice, so we always terminate here.
-				if err := scan.Err(); err != nil {
-					log.Fatal(err)
-				}
-				return append(conds, cond)
-			case "and":
-				// keep accumulating
-			default:
-				log.Fatalf("Unexpected token %q", token)
+				log.Fatalf("Unexpected operand %q (%s)", operand, s)
 			}
 		}
 	}
+}
+
+// parseRelation parses a relation for the given operand and returns it together
+// with the token following the relation.
+func parseRelation(scan *bufio.Scanner, operand string) (rel relation, next string) {
+	rel.operand = operand
+	op := scanToken(scan)
+	if op == "%" {
+		rel.mod = scanUint(scan)
+		op = scanToken(scan)
+	}
+	switch op {
+	case "=":
+	case "!=":
+		rel.notEqual = true
+	default:
+		log.Fatalf("Unexpected op %q", op)
+	}
+	for {
+		v := scanUint(scan)
+		next = scanToken(scan)
+		if next == ".." {
+			rel.values = append(rel.values, intRange(v, scanUint(scan))...)
+			next = scanToken(scan)
+		} else {
+			rel.values = append(rel.values, v)
+		}
+		if next != "," {
+			return rel, next
+		}
+	}
+}
+
+// addRelation adds the constraints of rel to each of the active or conditions
+// and returns the resulting or conditions.
+func addRelation(active []orCondition, rel relation, rule string) []orCondition {
+	switch rel.operand {
+	case "e", "c":
+		// This package does not support compact decimal formatting, so e is
+		// always 0 and the relation either always or never holds.
+		if slices.Contains(rel.values, 0) != rel.notEqual {
+			return active
+		}
+		return nil
+	case "w":
+		// The number of visible fraction digits without trailing zeros is only
+		// ever compared to zero, in which case it is equivalent to comparing t
+		// to zero.
+		if len(rel.values) != 1 || rel.values[0] != 0 {
+			log.Fatalf("Must compare against zero for operand w: %s", rule)
+		}
+		rel.operand = "t"
+	}
+	if rel.mod == 10 || rel.mod == 100 || rel.mod == 0 && slices.Max(rel.values) < maxMod {
+		// The relation can be expressed with the inclusion masks.
+		op := operandIndex[rel.operand]
+		if rel.mod != 0 {
+			op |= opMod
+		}
+		if rel.notEqual {
+			op |= opNotEqual
+		}
+		for i := range active {
+			active[i].add(op, rel.mod, rel.values)
+		}
+		return active
+	}
+	if rel.notEqual || rel.operand != "n" && rel.operand != "i" {
+		log.Fatalf("Relation not supported: %s", rule)
+	}
+	// Rules with relations on numbers of 100 or more or with a larger modulus
+	// are hard-wired.
+	var specials []specialRule
+	var small []int
+	switch {
+	case rel.mod == 0:
+		// Split the values in the ones that can be handled by the inclusion
+		// masks and the ones that need a hard-wired rule. As the number can
+		// only be in one of the two sets, these become separate alternatives.
+		var large []int
+		for _, v := range rel.values {
+			if v < maxMod {
+				small = append(small, v)
+			} else {
+				large = append(large, v)
+			}
+		}
+		switch {
+		case slices.Equal(large, []int{800}):
+			specials = append(specials, specialIs800)
+		case slices.Equal(large, intRange(800, 899)):
+			specials = append(specials, specialIs800To899)
+		default:
+			log.Fatalf("Values not supported: %s", rule)
+		}
+	case rel.mod == 1000 && slices.Equal(rel.values, []int{0}):
+		specials = append(specials, specialMod1e3Zero)
+	case rel.mod == 1000 && slices.Equal(rel.values, []int{100, 200, 300, 400, 500, 600, 700, 800, 900}):
+		specials = append(specials, specialMod1e3Hundreds)
+	case rel.mod == 100000 && slices.Equal(rel.values, append(intRange(1000, 20000), 40000, 60000, 80000)):
+		specials = append(specials, specialMod1e5Thousands)
+	case rel.mod == 1000000 && slices.Equal(rel.values, []int{0}):
+		specials = append(specials, specialMod1e6Zero)
+	case rel.mod == 1000000 && slices.Equal(rel.values, []int{100000}):
+		specials = append(specials, specialMod1e6Is1e5)
+	default:
+		log.Fatalf("Modulo value not supported: %s", rule)
+	}
+	var result []orCondition
+	for _, cond := range active {
+		if len(small) > 0 {
+			c := cond
+			c.add(operandIndex[rel.operand], 0, small)
+			result = append(result, c)
+		}
+		// The hard-wired rules only consider the integer part of the number.
+		// For operand n, the number must not have a fraction.
+		if rel.operand == "n" {
+			cond.add(opF, 0, []int{0})
+		}
+		// Copy on append: the or conditions may share the backing array.
+		cond.specials = append(cond.specials[:len(cond.specials):len(cond.specials)], specials...)
+		result = append(result, cond)
+	}
+	return result
 }
 
 func scanToken(scan *bufio.Scanner) string {

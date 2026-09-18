@@ -34,25 +34,43 @@ type pluralCheck struct {
 	// category:
 	// 3..7: opID
 	// 0..2: category
-	cat   byte
+	cat byte
+	// setID identifies the set of numbers to match against, or the
+	// specialRule if the opID is opSpecial.
 	setID byte
 }
 
-// opID identifies the type of operand in the plural rule, being i, n or f.
-// (v, w, and t are treated as filters in our implementation.)
+// opID identifies the type of operand in the plural rule, being i, n, f, v or
+// t. The operand w is expressed in terms of t. Rules that cannot be expressed
+// in terms of these operands and the inclusion masks are hard-wired and
+// identified by opSpecial.
 type opID byte
 
 const (
-	opMod           opID = 0x1    // is '%' used?
-	opNotEqual      opID = 0x2    // using "!=" to compare
-	opI             opID = 0 << 2 // integers after taking the absolute value
-	opN             opID = 1 << 2 // full number (must be integer)
-	opF             opID = 2 << 2 // fraction
-	opV             opID = 3 << 2 // number of visible digits
-	opW             opID = 4 << 2 // number of visible digits without trailing zeros
-	opBretonM       opID = 5 << 2 // hard-wired rule for Breton
-	opItalian800    opID = 6 << 2 // hard-wired rule for Italian
-	opAzerbaijan00s opID = 7 << 2 // hard-wired rule for Azerbaijan
+	opMod      opID = 0x1    // is '%' used?
+	opNotEqual opID = 0x2    // using "!=" to compare
+	opI        opID = 0 << 2 // integers after taking the absolute value
+	opN        opID = 1 << 2 // full number (must be integer)
+	opF        opID = 2 << 2 // fraction
+	opV        opID = 3 << 2 // number of visible digits
+	opT        opID = 4 << 2 // fraction without trailing zeros
+	opSpecial  opID = 5 << 2 // hard-wired rule identified by setID
+)
+
+// specialRule identifies a hard-wired rule that cannot be expressed using the
+// inclusion masks. Such a rule checks the integer part of the number only. If
+// the operand of the corresponding relation is n, the generator adds a check
+// that the number has no fraction.
+type specialRule byte
+
+const (
+	specialMod1e6Zero      specialRule = iota // n % 1000000 = 0: Breton and the Romance languages
+	specialMod1e6Is1e5                        // n % 1000000 = 100000: Cornish
+	specialMod1e3Zero                         // n % 1000 = 0: Cornish
+	specialMod1e5Thousands                    // n % 100000 = 1000..20000,40000,60000,80000: Cornish
+	specialMod1e3Hundreds                     // i % 1000 = 100,200,...,900: Azerbaijani ordinals
+	specialIs800                              // n = 800: Italian and related ordinals
+	specialIs800To899                         // n = 800..899: Ligurian and Sicilian ordinals
 )
 const (
 	// Use this plural form to indicate the next rule needs to match as well.
