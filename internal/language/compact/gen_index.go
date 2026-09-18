@@ -76,7 +76,7 @@ func (b *builder) writeCompactIndex() {
 		if len(t.Variants()) == 0 && len(t.Extensions()) == 0 {
 			cci, ok := language.GetCompactCore(t)
 			if !ok {
-				log.Fatalf("Locale for non-basic language %q", t)
+				log.Fatalf("%q: not a basic language or does not fit in a CompactCoreInfo", t)
 			}
 			coreTags = append(coreTags, cci)
 		} else {
