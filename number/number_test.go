@@ -118,6 +118,11 @@ func TestFormatter(t *testing.T) {
 		f:    Decimal(101, PatternOverrides(overrides)),
 		want: "101",
 	}, {
+		desc: "pattern overrides parent of parent",
+		tag:  "en-AU", // en-AU -> en-001 -> en
+		f:    Decimal(101, PatternOverrides(overrides)),
+		want: "eeeee101",
+	}, {
 		desc: "language selection",
 		tag:  "bn",
 		f:    Decimal(123456.78, Scale(2)),

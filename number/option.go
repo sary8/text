@@ -136,7 +136,7 @@ func PatternOverrides(patterns map[string]string) Option {
 	return func(t language.Tag, f *number.Formatter) {
 		// TODO: Use language grouping relation instead of parent relation.
 		// TODO: Should parent implement the grouping relation?
-		for lang := t; ; lang = t.Parent() {
+		for lang := t; ; lang = lang.Parent() {
 			if p, ok := m[lang]; ok {
 				f.Pattern = *p
 				break
