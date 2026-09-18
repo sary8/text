@@ -84,6 +84,9 @@ func (d *Decoder) decode(dir, id string, r io.Reader) error {
 		v = cldr.bcp47
 	case dir == "validity":
 		return nil
+	case dir == "supplemental-temp":
+		// Holds supplemental data that is not yet finalized. Not used.
+		return nil
 	default:
 		ok := false
 		if v, ok = cldr.locale[id]; !ok {
