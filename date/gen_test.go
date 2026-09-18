@@ -101,6 +101,10 @@ func TestTables(t *testing.T) {
 					for _, dc := range cal.Days.DayContext {
 						for _, dw := range dc.DayWidth {
 							for _, d := range dw.Day {
+								// The tables only include the default names.
+								if d.Alt != "" {
+									continue
+								}
 								test(d, "calendars", cal.Type, "days", dc.Type, width(dw.Type), d.Type)
 							}
 						}
@@ -162,6 +166,10 @@ func TestTables(t *testing.T) {
 				if cal.DateTimeFormats != nil {
 					for _, dtfl := range cal.DateTimeFormats.DateTimeFormatLength {
 						for _, dtf := range dtfl.DateTimeFormat {
+							// The tables only include the default format.
+							if dtf.Type != "" {
+								continue
+							}
 							for _, p := range dtf.Pattern {
 								test(p, "calendars", cal.Type, "dateTimeFormats", dtfl.Type, p.Alt)
 							}

@@ -80,6 +80,10 @@ func buildCLDRTree(data *cldr.CLDR, dates *cldrtree.Builder) {
 	}
 	width := cldrtree.EnumFunc("width", widthMap, "abbreviated", "narrow", "wide")
 	length := cldrtree.Enum("length", "short", "long")
+	// Enumerate the alt values of patterns in a fixed order: cldrtree requires
+	// a key to have the same enum value wherever it is used, but the order in
+	// which the values occur differs between locales.
+	alt := cldrtree.Enum("alt", "", "variant", "ascii")
 	month := cldrtree.Enum("month", "leap7")
 	relTime := cldrtree.EnumFunc("relTime", func(s string) string {
 		x, err := strconv.ParseInt(s, 10, 8)
@@ -165,6 +169,10 @@ func buildCLDRTree(data *cldr.CLDR, dates *cldrtree.Builder) {
 						for _, dw := range dc.DayWidth {
 							x := x.IndexFromType(dw, width)
 							for _, d := range dw.Day {
+								// Days are indexed by type only; skip alternative names.
+								if d.Alt != "" {
+									continue
+								}
 								x.SetValue(d.Type, d)
 							}
 						}
@@ -215,7 +223,7 @@ func buildCLDRTree(data *cldr.CLDR, dates *cldrtree.Builder) {
 						x := x.IndexFromType(dfl, length)
 						for _, df := range dfl.DateFormat {
 							for _, p := range df.Pattern {
-								x.SetValue(p.Alt, p)
+								x.SetValue(p.Alt, p, alt)
 							}
 						}
 					}
@@ -225,7 +233,7 @@ func buildCLDRTree(data *cldr.CLDR, dates *cldrtree.Builder) {
 						x := x.IndexFromType(tfl, length)
 						for _, tf := range tfl.TimeFormat {
 							for _, p := range tf.Pattern {
-								x.SetValue(p.Alt, p)
+								x.SetValue(p.Alt, p, alt)
 							}
 						}
 					}
@@ -234,8 +242,14 @@ func buildCLDRTree(data *cldr.CLDR, dates *cldrtree.Builder) {
 					for _, dtfl := range cal.DateTimeFormats.DateTimeFormatLength {
 						x := x.IndexFromType(dtfl, length)
 						for _, dtf := range dtfl.DateTimeFormat {
+							// The typed dateTimeFormats (atTime and relative, added in
+							// CLDR 42 and later) are not included: the tables index the
+							// formats by length only.
+							if dtf.Type != "" {
+								continue
+							}
 							for _, p := range dtf.Pattern {
-								x.SetValue(p.Alt, p)
+								x.SetValue(p.Alt, p, alt)
 							}
 						}
 					}
