@@ -15,7 +15,8 @@ import (
 )
 
 func TestGetIntApprox(t *testing.T) {
-	const big = 1234567890
+	// big must be a multiple of 10^nMod for all values of nMod used below.
+	const big = 1000000000
 	testCases := []struct {
 		digits string
 		start  int
@@ -24,19 +25,27 @@ func TestGetIntApprox(t *testing.T) {
 		want   int
 	}{
 		{"123", 0, 1, 1, 1},
-		{"123", 0, 2, 1, big},
+		{"123", 0, 2, 1, big + 2},
 		{"123", 0, 2, 2, 12},
 		{"123", 3, 4, 2, 0},
 		{"12345", 3, 4, 2, 4},
 		{"40", 0, 1, 2, 4},
 		{"1", 0, 7, 2, big},
+		{"1", 0, 100000000, 6, big}, // no loop over the trailing zeros
 
 		{"123", 0, 5, 2, big},
-		{"123", 0, 5, 3, big},
-		{"123", 0, 5, 4, big},
+		{"123", 0, 5, 3, big + 300},
+		{"123", 0, 5, 4, big + 2300},
 		{"123", 0, 5, 5, 12300},
 		{"123", 0, 5, 6, 12300},
 		{"123", 0, 5, 7, 12300},
+
+		// The value modulo powers of ten up to 10^nMod is preserved for large
+		// numbers.
+		{"1000001", 0, 7, 6, big + 1},
+		{"1234567", 0, 7, 6, big + 234567},
+		{"2500000", 0, 7, 6, big + 500000},
+		{"12", 0, 9, 6, big}, // 120000000 is a multiple of 10^6
 
 		// Translation of examples in MatchDigits.
 		// Integer parts
@@ -185,6 +194,60 @@ func parseFixedPoint(t *testing.T, s string) (val, scale int) {
 		t.Fatal(err)
 	}
 	return int(v), len(s) - p
+}
+
+// TestMatchDigits covers the approximation of large numbers and fractions in
+// MatchDigits at values that the samples in data_test.go do not reach.
+func TestMatchDigits(t *testing.T) {
+	testCases := []struct {
+		rules *Rules
+		lang  string
+		num   string
+		want  Form
+	}{
+		// The integer part is approximated modulo 1000000.
+		{Cardinal, "ru", "1000000", Many},
+		{Cardinal, "ru", "1000001", One},
+		{Cardinal, "ru", "12345678", Many},
+		{Cardinal, "br", "2000000", Many},
+		{Cardinal, "br", "2500000", Other},
+
+		// The fraction is approximated modulo 100.
+		{Cardinal, "bs", "0.123", Few},
+		{Cardinal, "lv", "1.201", One},
+
+		// The fraction may have trailing zeros.
+		{Cardinal, "is", "1.10", One},
+		{Cardinal, "is", "1.21", One},
+	}
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("%s/%s", tc.lang, tc.num), func(t *testing.T) {
+			tag := language.MustParse(tc.lang)
+			digits := []byte(strings.Replace(tc.num, ".", "", 1))
+			for i := range digits {
+				digits[i] -= '0'
+			}
+			exp := strings.IndexByte(tc.num, '.')
+			scale := 0
+			if exp < 0 {
+				exp = len(digits)
+			} else {
+				scale = len(digits) - exp
+			}
+			if got := tc.rules.MatchDigits(tag, digits, exp, scale); got != tc.want {
+				t.Errorf("MatchDigits: got %v; want %v", got, tc.want)
+			}
+		})
+	}
+
+	// Trailing zeros may be omitted from digits.
+	is := language.MustParse("is")
+	if got := Cardinal.MatchDigits(is, []byte{1}, 1, 3); got != One { // 1.000
+		t.Errorf("MatchDigits(is, 1.000): got %v; want %v", got, One)
+	}
+	if got := Cardinal.MatchDigits(is, []byte{1, 1}, 1, 3); got != One { // 1.100
+		t.Errorf("MatchDigits(is, 1.100): got %v; want %v", got, One)
+	}
 }
 
 func BenchmarkPluralSimpleCases(b *testing.B) {

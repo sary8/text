@@ -55,14 +55,16 @@ var (
 // according to the following rules:
 //   - Let i be asInt(digits[start:end]), where out-of-range digits are assumed
 //     to be zero.
-//   - Result n is big if i / 10^nMod > 1.
-//   - Otherwise the result is i % 10^nMod.
+//   - If i < 10^nMod, the result is i.
+//   - Otherwise the result is big + i % 10^nMod. big must be a positive
+//     multiple of 10^nMod, so that the result is at least big and is congruent
+//     to i modulo any power of 10 up to 10^nMod.
 //
-// For example, if digits is {1, 2, 3} and start:end is 0:5, then the result
-// for various values of nMod is:
-//   - when nMod == 2, n == big
-//   - when nMod == 3, n == big
-//   - when nMod == 4, n == big
+// For example, if digits is {1, 2, 3}, start:end is 0:5 and big is 10^nMod,
+// then the result for various values of nMod is:
+//   - when nMod == 2, n == 100 (= 10^2 + 12300 % 10^2)
+//   - when nMod == 3, n == 1300 (= 10^3 + 12300 % 10^3)
+//   - when nMod == 4, n == 12300 (= 10^4 + 12300 % 10^4)
 //   - when nMod == 5, n == 12300
 //   - when nMod == 6, n == 12300
 //   - when nMod == 7, n == 12300
@@ -77,23 +79,30 @@ func getIntApprox(digits []byte, start, end, nMod, big int) (n int) {
 	if mid >= len(digits) {
 		mid = len(digits)
 	}
-	// Check digits more significant that nMod.
+	// Check digits more significant than nMod.
+	isBig := false
 	if q := end - nMod; q > 0 {
 		if q > mid {
 			q = mid
 		}
 		for ; p < q; p++ {
 			if digits[p] != 0 {
-				return big
+				isBig = true
 			}
 		}
 	}
 	for ; p < mid; p++ {
 		n = 10*n + int(digits[p])
 	}
-	// Multiply for trailing zeros.
-	for ; p < end; p++ {
-		n *= 10
+	// Multiply for trailing zeros. If nMod or more remain, no digit was
+	// accumulated and n is 0, so there is nothing to multiply.
+	if end-p < nMod {
+		for ; p < end; p++ {
+			n *= 10
+		}
+	}
+	if isBig {
+		n += big
 	}
 	return n
 }
@@ -112,7 +121,7 @@ func getIntApprox(digits []byte, start, end, nMod, big int) (n int) {
 //	123.4      []byte{1, 2, 3, 4}  3      1
 //	123.40     []byte{1, 2, 3, 4}  3      2
 //	100000     []byte{1}           6      0
-//	100000.00  []byte{1}           6      3
+//	100000.00  []byte{1}           6      2
 func (p *Rules) MatchDigits(t language.Tag, digits []byte, exp, scale int) Form {
 	index := tagToID(t)
 
@@ -163,7 +172,8 @@ func (p *Rules) matchComponents(t language.Tag, n, f, scale int) Form {
 //		t  visible fractional digits in n, without trailing zeros.
 //
 // If any of the operand values is too large to fit in an int, it is okay to
-// pass the value modulo 10,000,000.
+// pass 1,000,000 plus the value modulo 1,000,000 for i, and 100 plus the value
+// modulo 100 for f and t.
 func (p *Rules) MatchPlural(lang language.Tag, i, v, w, f, t int) Form {
 	return matchPlural(p, tagToID(lang), i, f, v)
 }
